@@ -15,12 +15,12 @@ import (
 func main() {
 	// Подключаемся к MongoDB
 	client := db.Connect("mongodb+srv://angelinali1310:RRMg8Fxl9uIo2mp6@todolistbotgo.hz0tmef.mongodb.net/?retryWrites=true&w=majority&appName=todolistbotgo")
-	collection := client.Database("todolistbotgo").Collection("tasks")
+	collection := client.Database("todolistbotgo").Collection("tasks") // автоматически создает tasks
 
 	taskService := tasks.NewTaskService(collection)
 
 	bot, err := tgbotapi.NewBotAPI("7650724062:AAFgaH0xtdW_rlgGtMqPduehkOb9E7R3_Hs")
-	if err != nil {
+	if err != nil { // обрабатываем ошибку
 		log.Panic(err)
 	}
 
@@ -33,11 +33,11 @@ func main() {
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
-	updates := bot.GetUpdatesChan(u)
+	updates := bot.GetUpdatesChan(u) // получаем канал
 
-	awaiting := make(map[int64]string)
+	awaiting := make(map[int64]string) // "add", "delete" или ""
 
-	for update := range updates {
+	for update := range updates { // читаем канал пока он не закроется
 		if update.Message == nil {
 			continue
 		}
@@ -56,8 +56,28 @@ func main() {
 				send(bot, chatID, "✅ Задача добавлена: "+text)
 			}
 			awaiting[chatID] = ""
-			send(bot, chatID, "🤖 Доступные команды: /add /list")
+			send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
 			cancel()
+			continue
+		case "done":
+			tasks, err := taskService.ListTasks(ctx, chatID)
+			if err != nil {
+				log.Println("Ошибка при done", err)
+			}
+			index, err := strconv.Atoi(text)
+			if err != nil || index <= 0 || index > len(tasks) {
+				send(bot, chatID, "❌ Неверный номер задачи.")
+			} else {
+				taskToUpdate := tasks[index-1]
+				err = taskService.MarkTaskDone(ctx, taskToUpdate.ID)
+				if err != nil {
+					// handle error
+				} else {
+					send(bot, chatID, "🎉 Задача отмечена как выполненная!")
+				}
+				send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+			}
+			awaiting[chatID] = ""
 			continue
 		}
 
@@ -89,8 +109,23 @@ func main() {
 				}
 				send(bot, chatID, msg)
 			}
+		case "/done":
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			tasks, err := taskService.ListTasks(ctx, chatID)
+			cancel()
+			if err != nil {
+				log.Println("Ошибка при /done:", err)
+				send(bot, chatID, "❌ Ошибка при /done.")
+				continue
+			}
+			if len(tasks) == 0 {
+				send(bot, chatID, "📭 У вас нет задач.")
+			} else {
+				awaiting[chatID] = "done"
+				send(bot, chatID, "☑️ Введите номер задачи, которую вы завершили:")
+			}
 		default:
-			send(bot, chatID, "🤖 Доступные команды: /add /list")
+			send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
 		}
 	}
 }
