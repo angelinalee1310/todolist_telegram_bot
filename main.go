@@ -90,7 +90,11 @@ func main() {
 			} else {
 				taskTRemoved := tasks[index-1]
 				err = taskService.RemoveTask(ctx, taskTRemoved.ID)
-				send(bot, chatID, "🗑 Удалена: "+taskTRemoved.Text)
+				if err != nil {
+					// handle error
+				} else {
+					send(bot, chatID, "🗑 Удалена: "+taskTRemoved.Text)
+				}
 				send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
 			}
 			awaiting[chatID] = ""
