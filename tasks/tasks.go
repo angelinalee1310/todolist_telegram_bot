@@ -50,3 +50,9 @@ func (s *TaskService) MarkTaskDone(ctx context.Context, id primitive.ObjectID) e
 	_, err := s.collection.UpdateOne(ctx, filter, update)
 	return err
 }
+
+func (s *TaskService) RemoveTask(ctx context.Context, id primitive.ObjectID) error {
+	filter := bson.M{"_id": id}
+	_, err := s.collection.DeleteOne(ctx, filter)
+	return err
+}

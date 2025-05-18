@@ -79,6 +79,22 @@ func main() {
 			}
 			awaiting[chatID] = ""
 			continue
+		case "delete":
+			tasks, err := taskService.ListTasks(ctx, chatID)
+			if err != nil {
+				log.Println("Ошибка при delete", err)
+			}
+			index, err := strconv.Atoi(text)
+			if err != nil || index <= 0 || index > len(tasks) {
+				send(bot, chatID, "❌ Неверный номер задачи.")
+			} else {
+				taskTRemoved := tasks[index-1]
+				err = taskService.RemoveTask(ctx, taskTRemoved.ID)
+				send(bot, chatID, "🗑 Удалена: "+taskTRemoved.Text)
+				send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+			}
+			awaiting[chatID] = ""
+			continue
 		}
 
 		cancel()
@@ -108,6 +124,7 @@ func main() {
 					msg += strconv.Itoa(i+1) + ". " + t.Text + " " + status + "\n"
 				}
 				send(bot, chatID, msg)
+				send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
 			}
 		case "/done":
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -123,6 +140,21 @@ func main() {
 			} else {
 				awaiting[chatID] = "done"
 				send(bot, chatID, "☑️ Введите номер задачи, которую вы завершили:")
+			}
+		case "/delete":
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			tasks, err := taskService.ListTasks(ctx, chatID)
+			cancel()
+			if err != nil {
+				log.Println("Ошибка при /delete:", err)
+				send(bot, chatID, "❌ Ошибка при /delete.")
+				continue
+			}
+			if len(tasks) == 0 {
+				send(bot, chatID, "📭 У вас нет задач для удаления.")
+			} else {
+				awaiting[chatID] = "delete"
+				send(bot, chatID, "❓ Введите номер задачи для удаления:")
 			}
 		default:
 			send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
