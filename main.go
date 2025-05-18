@@ -1,99 +1,80 @@
 package main
 
 import (
+	"context"
 	"log"
 	"strconv"
+	"time"
 
-	_ "github.com/lib/pq"
-
-	"todolist_bot/supabase"
+	db "todolist_bot/mongodb"
+	"todolist_bot/tasks"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// type Task struct {
-// 	Text     string
-// 	IsDone bool
-// }
-
-var awaiting = make(map[int64]string) // "add", "delete" или ""
-// var tasks = make(map[int64][]Task)
-
 func main() {
+	// Подключаемся к MongoDB
+	client := db.Connect("mongodb+srv://angelinali1310:RRMg8Fxl9uIo2mp6@todolistbotgo.hz0tmef.mongodb.net/?retryWrites=true&w=majority&appName=todolistbotgo")
+	collection := client.Database("todolistbotgo").Collection("tasks")
+
+	taskService := tasks.NewTaskService(collection)
+
 	bot, err := tgbotapi.NewBotAPI("7650724062:AAFgaH0xtdW_rlgGtMqPduehkOb9E7R3_Hs")
-	if err != nil { // обрабатываем ошибку
+	if err != nil {
 		log.Panic(err)
 	}
 
-	// настройка обновлений от Telegram
+	// Удаляем webhook, чтобы использовать polling
+	_, err = bot.Request(tgbotapi.DeleteWebhookConfig{})
+	if err != nil {
+		log.Fatalf("Не удалось удалить webhook: %v", err)
+	}
+	log.Println("Webhook удалён успешно, запускаем polling...")
+
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
-	updates := bot.GetUpdatesChan(u) // получаем канал
+	updates := bot.GetUpdatesChan(u)
 
-	for update := range updates { // читаем канал пока он не закроется
+	awaiting := make(map[int64]string)
+
+	for update := range updates {
 		if update.Message == nil {
 			continue
 		}
 
 		chatID := update.Message.Chat.ID
 		text := update.Message.Text
-		sc := supabase.NewSupabaseClient()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 
 		switch awaiting[chatID] {
 		case "add":
-			// tasks[chatID] = append(tasks[chatID], text)
-			// tasks[chatID] = append(tasks[chatID], Task{Text: text, IsDone: false})
-			err := sc.AddTask(chatID, text)
+			err := taskService.AddTask(ctx, chatID, text)
 			if err != nil {
-				log.Fatal("Ошибка при добавлении задачи:", err)
+				log.Println("Ошибка при добавлении задачи:", err)
+				send(bot, chatID, "❌ Ошибка при добавлении задачи.")
+			} else {
+				send(bot, chatID, "✅ Задача добавлена: "+text)
 			}
 			awaiting[chatID] = ""
-			send(bot, chatID, "✅ Задача добавлена: "+text)
-			send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+			send(bot, chatID, "🤖 Доступные команды: /add /list")
+			cancel()
 			continue
-
-			// case "delete":
-			// 	index, err := strconv.Atoi(text)
-			// 	if err != nil || index <= 0 || index > len(tasks[chatID]) {
-			// 		send(bot, chatID, "❌ Неверный номер задачи.")
-			// 	} else {
-			// 		index--
-			// 		removed := tasks[chatID][index]
-			// 		tasks[chatID] = append(tasks[chatID][:index], tasks[chatID][index+1:]...)
-			// 		send(bot, chatID, "🗑 Удалена: "+removed.Text)
-			// 		send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
-			// 	}
-			// 	awaiting[chatID] = ""
-			// 	continue
-			// case "done":
-			// 	index, err := strconv.Atoi(text)
-			// 	if err != nil || index <= 0 || index > len(tasks[chatID]) {
-			// 		send(bot, chatID, "❌ Неверный номер задачи.")
-			// 	} else {
-			// 		tasks[chatID][index-1].IsDone = true
-			// 		send(bot, chatID, "🎉 Задача отмечена как выполненная!")
-			// 		send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
-			// 	}
-			// 	awaiting[chatID] = ""
-			// 	continue
-
 		}
+
+		cancel()
 
 		switch text {
 		case "/add":
 			awaiting[chatID] = "add"
 			send(bot, chatID, "✏️ Напишите задачу:")
-		// case "/delete":
-		// 	if len(tasks[chatID]) == 0 {
-		// 		send(bot, chatID, "📭 У вас нет задач для удаления.")
-		// 	} else {
-		// 		awaiting[chatID] = "delete"
-		// 		send(bot, chatID, "❓ Введите номер задачи для удаления:")
-		// 	}
 		case "/list":
-			tasks, err := sc.ListTasks(chatID)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			tasks, err := taskService.ListTasks(ctx, chatID)
+			cancel()
 			if err != nil {
-				log.Fatal("Ошибка при получении задач:", err)
+				log.Println("Ошибка при получении задач:", err)
+				send(bot, chatID, "❌ Ошибка при получении задач.")
+				continue
 			}
 			if len(tasks) == 0 {
 				send(bot, chatID, "📭 Список задач пуст.")
@@ -108,17 +89,9 @@ func main() {
 				}
 				send(bot, chatID, msg)
 			}
-		// case "/done":
-		// 	if len(tasks[chatID]) == 0 {
-		// 		send(bot, chatID, "📭 У вас нет задач.")
-		// 	} else {
-		// 		awaiting[chatID] = "done"
-		// 		send(bot, chatID, "☑️ Введите номер задачи, которую вы завершили:")
-		// 	}
 		default:
-			send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+			send(bot, chatID, "🤖 Доступные команды: /add /list")
 		}
-
 	}
 }
 
@@ -126,20 +99,3 @@ func send(bot *tgbotapi.BotAPI, chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	bot.Send(msg)
 }
-
-// func justTest(){
-// 	m := [...]int{}
-// 	fmt.Println(m)
-
-// 	m2 := make([]int, 0, 0)
-// 	fmt.Println(m2)
-
-// 	for index, v := range m2 {
-// 		fmt.Println(index, v)
-// 	}
-
-// 	map1 := make(map[string]int)
-// 	map1["task 1"] = 1
-
-// 	ch := make(chan int, 3)
-// }
