@@ -12,6 +12,23 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+func sendWithKeyboard(bot *tgbotapi.BotAPI, chatID int64, text string) {
+	keyboard := tgbotapi.NewReplyKeyboard(
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("/add"),
+			tgbotapi.NewKeyboardButton("/list"),
+		),
+		tgbotapi.NewKeyboardButtonRow(
+			tgbotapi.NewKeyboardButton("/done"),
+			tgbotapi.NewKeyboardButton("/delete"),
+		),
+	)
+
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
+
 func main() {
 	// Подключаемся к MongoDB
 	client := db.Connect("mongodb+srv://angelinali1310:RRMg8Fxl9uIo2mp6@todolistbotgo.hz0tmef.mongodb.net/?retryWrites=true&w=majority&appName=todolistbotgo")
@@ -56,7 +73,8 @@ func main() {
 				send(bot, chatID, "✅ Задача добавлена: "+text)
 			}
 			awaiting[chatID] = ""
-			send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+			// send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+			sendWithKeyboard(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
 			cancel()
 			continue
 		case "done":
@@ -75,7 +93,8 @@ func main() {
 				} else {
 					send(bot, chatID, "🎉 Задача отмечена как выполненная!")
 				}
-				send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+				// send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+				sendWithKeyboard(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
 			}
 			awaiting[chatID] = ""
 			continue
@@ -95,7 +114,8 @@ func main() {
 				} else {
 					send(bot, chatID, "🗑 Удалена: "+taskTRemoved.Text)
 				}
-				send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+				// send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+				sendWithKeyboard(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
 			}
 			awaiting[chatID] = ""
 			continue
@@ -128,7 +148,8 @@ func main() {
 					msg += strconv.Itoa(i+1) + ". " + t.Text + " " + status + "\n"
 				}
 				send(bot, chatID, msg)
-				send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+				// send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+				sendWithKeyboard(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
 			}
 		case "/done":
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -161,7 +182,8 @@ func main() {
 				send(bot, chatID, "❓ Введите номер задачи для удаления:")
 			}
 		default:
-			send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+			// send(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
+			sendWithKeyboard(bot, chatID, "🤖 Доступные команды: /add /list /delete /done")
 		}
 	}
 }
